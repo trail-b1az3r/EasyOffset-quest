@@ -1,0 +1,62 @@
+cmake_minimum_required(VERSION 3.22)
+
+option(QUEST "Build for quest" ON)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED 20)
+set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+
+set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set(INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+add_compile_options(-frtti -fexceptions -fvisibility=hidden -fPIE -fPIC)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/utils.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/qpm.cmake)
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo)
+endif()
+
+if(${CMAKE_BUILD_TYPE} STREQUAL "RELEASE" OR ${CMAKE_BUILD_TYPE} STREQUAL "RelWithDebInfo" OR ${CMAKE_BUILD_TYPE} STREQUAL "MinSizeRel")
+    add_compile_options(-O3)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    add_compile_options(-flto)
+endif()
+
+if(${CMAKE_BUILD_TYPE} STREQUAL "DEBUG" OR ${CMAKE_BUILD_TYPE} STREQUAL "RelWithDebInfo")
+    add_compile_options(-g)
+endif()
+
+if(QUEST)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/targets/quest.cmake)
+endif()
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/strip.cmake)
+
+project(easyoffset VERSION ${PACKAGE_VERSION})
+
+add_compile_definitions(MOD_ID="${CMAKE_PROJECT_NAME}")
+add_compile_definitions(VERSION="${CMAKE_PROJECT_VERSION}")
+add_compile_definitions(ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets)
+
+set(COMPILE_ID ${CMAKE_PROJECT_NAME})
+
+RECURSE_FILES(cpp_file_list ${SOURCE_DIR}/*.cpp)
+RECURSE_FILES(c_file_list ${SOURCE_DIR}/*.c)
+
+add_library(${CMAKE_PROJECT_NAME} SHARED ${cpp_file_list} ${c_file_list})
+
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE -llog)
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${INCLUDE_DIR})
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${SHARED_DIR})
+
+RECURSE_FILES(src_inline_hook_beatsaber_hook_local_extra_c ${EXTERN_DIR}/includes/beatsaber-hook/shared/inline-hook/*.c)
+RECURSE_FILES(src_inline_hook_beatsaber_hook_local_extra_cpp ${EXTERN_DIR}/includes/beatsaber-hook/shared/inline-hook/*.cpp)
+target_sources(${COMPILE_ID} PRIVATE ${src_inline_hook_beatsaber_hook_local_extra_c})
+target_sources(${COMPILE_ID} PRIVATE ${src_inline_hook_beatsaber_hook_local_extra_cpp})
+
+# rebuild the embedded assets when they change
+file(GLOB asset_files ${CMAKE_CURRENT_SOURCE_DIR}/assets/* ${CMAKE_CURRENT_SOURCE_DIR}/cover.png)
+set_source_files_properties(${SOURCE_DIR}/Assets.cpp PROPERTIES OBJECT_DEPENDS "${asset_files}")
