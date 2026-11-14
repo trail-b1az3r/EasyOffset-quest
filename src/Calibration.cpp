@@ -40,6 +40,9 @@
 #include "System/Action_2.hpp"
 #include "System/Nullable_1.hpp"
 #include "UnityEngine/Resources.hpp"
+#include "System/Collections/Generic/IEnumerable_1.hpp"
+#include "System/Collections/Generic/IEnumerator_1.hpp"
+#include "System/Collections/IEnumerator.hpp"
 #include "Zenject/DiContainer.hpp"
 
 namespace fs = std::filesystem;
@@ -146,20 +149,88 @@ static bool AllLevelsLoaded() {
 static void OnLevelFinished(UnityW<StandardLevelScenesTransitionSetupDataSO>, LevelCompletionResults* results);
 static void OnLevelRestarted(UnityW<StandardLevelScenesTransitionSetupDataSO>, LevelCompletionResults*);
 
+static UnityW<MenuTransitionsHelper> menuTransitionsHelper;
+static UnityW<PlayerDataModel> playerDataModel;
+static EnvironmentsListModel* environmentsListModel = nullptr;
+
+void SetMenuObjects(MenuTransitionsHelper* helper, PlayerDataModel* dataModel, EnvironmentsListModel* environments) {
+    if (helper) menuTransitionsHelper = helper;
+    if (dataModel) playerDataModel = dataModel;
+    if (environments) environmentsListModel = environments;
+}
+
+static MenuTransitionsHelper* GetMenuTransitionsHelper() {
+    if (menuTransitionsHelper) return menuTransitionsHelper.ptr();
+    for (auto helper : UnityEngine::Resources::FindObjectsOfTypeAll<MenuTransitionsHelper*>()) {
+        if (helper) return (menuTransitionsHelper = helper).ptr();
+    }
+    return nullptr;
+}
+
+static PlayerDataModel* GetPlayerDataModel() {
+    if (playerDataModel) return playerDataModel.ptr();
+    for (auto model : UnityEngine::Resources::FindObjectsOfTypeAll<PlayerDataModel*>()) {
+        if (model && model->get_playerData()) return (playerDataModel = model).ptr();
+    }
+    return nullptr;
+}
+
+static bool IsStandard(BeatmapCharacteristicSO* characteristic) {
+    return characteristic && characteristic->get_serializedName() == "Standard";
+}
+
+// The key has to use the exact characteristic object SongCore attached to the level,
+// so it is read from the level itself. (SongCore's GetCharacteristicBySerializedName
+// only knows custom characteristics and returns null for "Standard".)
+static bool GetBeatmapKey(BeatmapLevel* level, BeatmapKey& result) {
+    bool found = false;
+    if (auto keys = level->GetBeatmapKeys()) {
+        auto enumerator = keys->GetEnumerator();
+        while (enumerator && enumerator->i___System__Collections__IEnumerator()->MoveNext()) {
+            BeatmapKey key = enumerator->get_Current();
+            bool standard = IsStandard(key.beatmapCharacteristic.ptr());
+            if (!found || (standard && key.difficulty == BeatmapDifficulty::Easy)) {
+                result = key;
+                found = true;
+            }
+            if (standard && key.difficulty == BeatmapDifficulty::Easy) break;
+        }
+    }
+    if (found) return true;
+
+    // fallback: the game's Standard characteristic
+    for (auto characteristic : UnityEngine::Resources::FindObjectsOfTypeAll<BeatmapCharacteristicSO*>()) {
+        if (!IsStandard(characteristic)) continue;
+        result = BeatmapKey(characteristic, BeatmapDifficulty::Easy, level->levelID);
+        return true;
+    }
+    return false;
+}
+
 void StartCurrentStep() {
     if (state != State::WaitingToStart) return;
 
     auto level = FindLevel(step);
-    auto helpers = UnityEngine::Resources::FindObjectsOfTypeAll<MenuTransitionsHelper*>();
-    auto dataModels = UnityEngine::Resources::FindObjectsOfTypeAll<PlayerDataModel*>();
-    auto characteristic = SongCore::API::Characteristics::GetCharacteristicBySerializedName("Standard");
-    if (!level || helpers.size() == 0 || dataModels.size() == 0 || !characteristic) {
-        Fail("Could not start the calibration map (level, menu or player data missing).");
+    auto helper = GetMenuTransitionsHelper();
+    auto dataModel = GetPlayerDataModel();
+    auto playerData = dataModel ? dataModel->get_playerData() : nullptr;
+    BeatmapKey key;
+    bool hasKey = level && GetBeatmapKey(level, key);
+    Logger.info("Auto Configure map {}: level={} key={} menuTransitionsHelper={} playerData={}", step + 1, fmt::ptr(level), hasKey, fmt::ptr(helper),
+                fmt::ptr(playerData));
+
+    std::string missing;
+    if (!level) missing += "\n- the calibration level (SongCore did not load it)";
+    else if (!hasKey) missing += "\n- the Standard / Easy difficulty of the level";
+    if (!helper) missing += "\n- the menu transition helper";
+    if (!playerData) missing += "\n- the player data";
+    EnvironmentsListModel* environments = environmentsListModel;
+    if (!environments && dataModel && dataModel->get_playerDataFileModel()) environments = dataModel->get_playerDataFileModel()->_environmentsListModel;
+    if (!environments) missing += "\n- the environments list";
+    if (!missing.empty()) {
+        Fail("Could not start calibration map " + std::to_string(step + 1) + ". Missing:" + missing);
         return;
     }
-    auto helper = helpers[0];
-    auto playerData = dataModels[0]->get_playerData();
-    auto environments = dataModels[0]->get_playerDataFileModel()->_environmentsListModel;
 
     // No Fail and no score-changing modifiers: this is a measurement, not a score
     using System::Nullable_1;
@@ -169,8 +240,6 @@ void StartCurrentStep() {
         Nullable_1<bool>(true, false), Nullable_1<bool>(true, false), Nullable_1<bool>(true, false), Nullable_1<bool>(true, false),
         Nullable_1<GameplayModifiers_SongSpeed>(true, GameplayModifiers_SongSpeed::Normal), Nullable_1<bool>(true, false), Nullable_1<bool>(true, false),
         Nullable_1<bool>(true, false), Nullable_1<bool>(true, false), Nullable_1<bool>(true, false));
-
-    BeatmapKey key(characteristic, BeatmapDifficulty::Easy, level->levelID);
 
     recordings[step].clear();
     audioTimeSync = nullptr;

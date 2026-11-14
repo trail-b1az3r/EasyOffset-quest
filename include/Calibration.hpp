@@ -4,6 +4,12 @@
 
 #include "Enums.hpp"
 
+namespace GlobalNamespace {
+class MenuTransitionsHelper;
+class PlayerDataModel;
+class EnvironmentsListModel;
+}
+
 // Auto Configure: plays the three generated calibration maps back to back,
 // records the raw controller motion and solves the offsets (see CalibrationSolver).
 namespace EasyOffset::Calibration {
@@ -30,4 +36,7 @@ void Begin(ControllerType type);
 void StartCurrentStep();
 void Cancel();       // restores the offsets from before Auto Configure
 void Acknowledge();  // closes the Done / Failed message
+
+// Menu objects resolved from the menu's Zenject container (more reliable than searching)
+void SetMenuObjects(GlobalNamespace::MenuTransitionsHelper* helper, GlobalNamespace::PlayerDataModel* dataModel, GlobalNamespace::EnvironmentsListModel* environments);
 }

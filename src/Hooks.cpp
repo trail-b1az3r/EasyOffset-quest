@@ -1,3 +1,4 @@
+#include "Calibration.hpp"
 #include "Config.hpp"
 #include "Gizmos.hpp"
 #include "Tracking.hpp"
@@ -5,6 +6,9 @@
 
 #include "GlobalNamespace/IVRPlatformHelper.hpp"
 #include "GlobalNamespace/MainSettingsMenuViewControllersInstaller.hpp"
+#include "GlobalNamespace/MenuTransitionsHelper.hpp"
+#include "GlobalNamespace/PlayerDataModel.hpp"
+#include "GlobalNamespace/EnvironmentsListModel.hpp"
 #include "GlobalNamespace/SettingsApplicatorSO.hpp"
 #include "GlobalNamespace/SettingsManager.hpp"
 #include "GlobalNamespace/VRController.hpp"
@@ -103,6 +107,7 @@ MAKE_HOOK_MATCH(MainSettingsMenuViewControllersInstaller_InstallBindings, &MainS
     auto container = self->get_Container();
     if (!container) return;
     Config::SetGameSettings(container->TryResolve<SettingsManager*>(), container->TryResolve<SettingsApplicatorSO*>());
+    Calibration::SetMenuObjects(container->TryResolve<MenuTransitionsHelper*>(), container->TryResolve<PlayerDataModel*>(), container->TryResolve<EnvironmentsListModel*>());
 }
 
 static void OnEnabledChanged(bool enabled) {
