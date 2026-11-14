@@ -24,13 +24,22 @@ jobs:
       - name: Create ndkpath.txt
         run: echo "${{ steps.setup-ndk.outputs.ndk-path }}" > ndkpath.txt
 
-      - name: Setup qpm
-        uses: Fernthedev/qpm-action@main
+      # qpm-action downloads qpm from QPM.CLI CI artifacts, which expire; use the release binary
+      - name: Install qpm
+        run: |
+          curl -sSL -o qpm.zip https://github.com/QuestPackageManager/QPM.CLI/releases/latest/download/qpm-linux-x64.zip
+          unzip -q qpm.zip -d "$HOME/qpm" && rm qpm.zip
+          chmod +x "$HOME/qpm/qpm"
+          echo "$HOME/qpm" >> "$GITHUB_PATH"
+
+      - name: Cache qpm packages
+        uses: actions/cache@v4
         with:
-          workflow_token: ${{ secrets.GITHUB_TOKEN }}
-          restore: true
-          cache: true
-          publish: false
+          path: ~/.local/share/QPM-RS
+          key: qpm-${{ hashFiles('qpm.shared.json') }}
+
+      - name: Restore dependencies
+        run: qpm restore
 
       - name: Solver unit test (host)
         run: mkdir -p build && ./test/run.sh
